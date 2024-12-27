@@ -2,19 +2,14 @@ from fastapi import FastAPI, HTTPException, Query
 import requests
 from bs4 import BeautifulSoup
 import time
-from queue import Queue
 import logging
-import json
-import os
 from urllib.parse import urljoin, urlparse
-import re
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Web Scraper API", description="API para extrair dados de páginas web.", version="1.0.0")
 
-# CORS (Cross-Origin Resource Sharing) - importante para permitir requisições de outros domínios
-origins = ["*"]  # Em produção, especifique os domínios permitidos, ex: ["http://meusite.com", "https://outro.com"]
+origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -23,17 +18,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuração de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(), logging.FileHandler('scraper.log')])
 logger = logging.getLogger(__name__)
 
 class WebScraper:
     def __init__(self, start_url, target_endpoint):
-        # ... (seu código da classe WebScraper permanece igual)
+        self.start_url = start_url
+        self.target_endpoint = target_endpoint
+        self.visited_urls = set()
 
-@app.get("/scrape/", summary="Executa o scraping de uma URL.", description="Este endpoint executa o scraping de uma URL fornecida e envia os dados para um webhook.")
-async def scrape_endpoint(start_url: str = Query(..., description="URL inicial para o scraping")):
-    """Executa o scraping."""
+    def scrape(self):
+        try:
+            response = requests.get(self.start_url)
+            response.raise_for_status()  # Lança uma exceção para códigos de status HTTP ruins (4xx ou 5xx)
+            soup = BeautifulSoup(response.content, "html.parser")
+
+            # Exemplo básico de extração (substitua com sua lógica real)
+            links = []
+            for link in soup.find_all("a"):
+                href = link.get("href")
+                absolute_url = urljoin(self.start_url, href)
+                if absolute_url.startswith("http") and absolute_url not in self.visited_urls:
+                    links.append(absolute_url)
+                    self.visited_urls.add(absolute_url)
+            logger.info(f"Encontrados {len(links)} links em {self.start_url}")
+
+            # Envia os dados para o webhook (substitua com sua lógica real)
+            # requests.post(self.target_endpoint, json={"links": links})
+            logger.info(f"Dados enviados para {self.target_endpoint} (simulado).")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erro ao acessar {self.start_url}: {e}")
+            raise
+
+    def compare_links(self):
+      logger.info("Comparação de links simulada.") #adicione sua lógica de comparação aqui
+
+@app.get("/scrape/", summary="Executa o scraping de uma URL.")
+async def scrape_endpoint(start_url: str = Query(..., description="URL inicial")):
     try:
         if not start_url.startswith("http"):
             raise HTTPException(status_code=400, detail="A URL deve começar com http:// ou https://")
@@ -41,7 +62,7 @@ async def scrape_endpoint(start_url: str = Query(..., description="URL inicial p
         scraper = WebScraper(start_url, "https://n8n.midvisiondigital.com.br/webhook/deda4a51-2907-41a8-8975-d6549f3c8b9c")
         scraper.scrape()
         scraper.compare_links()
-        return {"message": f"Scraping concluído para {start_url}. Verifique o arquivo scraper.log para detalhes."}
+        return {"message": f"Scraping concluído para {start_url}."}
     except requests.exceptions.RequestException as e:
         logger.exception(f"Erro de requisição durante o scraping: {e}")
         raise HTTPException(status_code=500, detail=f"Erro de requisição: {e}")
@@ -49,9 +70,8 @@ async def scrape_endpoint(start_url: str = Query(..., description="URL inicial p
         logger.exception(f"Erro interno durante o scraping: {e}")
         raise HTTPException(status_code=500, detail=f"Erro interno: {e}")
 
-@app.get("/health", summary="Verifica a saúde da API", description="Este endpoint retorna um status 200 OK se a API estiver funcionando.")
+@app.get("/health", summary="Verifica a saúde da API")
 async def health_check():
-    """Verifica se a API está online."""
     return {"status": "ok"}
 
 if __name__ == "__main__":
